@@ -40,6 +40,8 @@ export default async (knex: Knex, forceInit: boolean = false): Promise<void> => 
         table.text("directorManual");
         table.text("mode");
         table.text("videoRatio");
+        table.text("authorPersona");
+        table.text("targetAudience");
         table.integer("createTime");
         table.integer("userId");
         table.primary(["id"]);
