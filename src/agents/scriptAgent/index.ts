@@ -62,8 +62,8 @@ export async function runDecisionAI(ctx: AgentContext) {
         `剧本名称：${projectData?.name ?? "未知"}`,
         `剧本类型：${projectData?.type ?? "未知"}`,
         `剧本简介：${projectData?.intro ?? "无"}`,
-        `视觉手册：${projectData?.artStyle ?? "无"}`,
-        `画幅：${projectData?.videoRatio ?? "16:9"}`,
+        `写手人设：${projectData?.authorPersona ?? "无"}`,
+        `目标读者：${projectData?.targetAudience ?? "无"}`,
       ].join("\n")
     : [
         "## 项目信息",
