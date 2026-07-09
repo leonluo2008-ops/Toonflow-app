@@ -43,24 +43,37 @@ export async function runDecisionAI(ctx: AgentContext) {
   const memory = new Memory("scriptAgent", isolationKey);
   await memory.add("user", text, { createTime: userMessageTime });
 
-  const skill = path.join(u.getPath("skills"), "script_agent_decision.md");
-  const prompt = await fs.promises.readFile(skill, "utf-8");
-
-  const mem = buildMemPrompt(await memory.get(text));
+  const memData = await memory.get(text);
 
   const projectData = await u.db("o_project").where("id", resTool.data.projectId).first();
-
   const novelData = await u.db("o_novel").where("projectId", resTool.data.projectId).select("chapterIndex");
 
-  const projectInfo = [
-    "## 项目信息",
-    `小说名称：${projectData?.name ?? "未知"}`,
-    `小说类型：${projectData?.type ?? "未知"}`,
-    `小说简介：${projectData?.intro ?? "无"}`,
-    `目标改编影视视觉手册|画风：${projectData?.artStyle ?? "无"}`,
-    `目标改编视频画幅：${projectData?.videoRatio ?? "16:9"}`,
-    `章节数量：${novelData.length}章`,
-  ].join("\n");
+  const isStoryCreator = projectData?.projectType === "scriptCreation";
+
+  const skillFile = isStoryCreator ? "story_creator_decision.md" : "script_agent_decision.md";
+  const skill = path.join(u.getPath("skills"), skillFile);
+  const prompt = await fs.promises.readFile(skill, "utf-8");
+
+  const mem = buildMemPrompt(memData);
+
+  const projectInfo = isStoryCreator
+    ? [
+        "## 项目信息",
+        `剧本名称：${projectData?.name ?? "未知"}`,
+        `剧本类型：${projectData?.type ?? "未知"}`,
+        `剧本简介：${projectData?.intro ?? "无"}`,
+        `视觉手册：${projectData?.artStyle ?? "无"}`,
+        `画幅：${projectData?.videoRatio ?? "16:9"}`,
+      ].join("\n")
+    : [
+        "## 项目信息",
+        `小说名称：${projectData?.name ?? "未知"}`,
+        `小说类型：${projectData?.type ?? "未知"}`,
+        `小说简介：${projectData?.intro ?? "无"}`,
+        `目标改编影视视觉手册|画风：${projectData?.artStyle ?? "无"}`,
+        `目标改编视频画幅：${projectData?.videoRatio ?? "16:9"}`,
+        `章节数量：${novelData.length}章`,
+      ].join("\n");
 
   const { fullStream } = await u.Ai.Text("scriptAgent:decisionAgent", ctx.thinkConfig.think, ctx.thinkConfig.thinlLevel).stream({
     messages: [
@@ -72,7 +85,7 @@ export async function runDecisionAI(ctx: AgentContext) {
     tools: {
       ...memory.getTools(),
       ...useTools({ resTool: ctx.resTool, msg: ctx.msg }),
-      ...createSubAgent(ctx),
+      ...createSubAgent(ctx, isStoryCreator),
     },
     onFinish: async (completion) => {
       await memory.add("assistant:decision", removeAllXmlTags(completion.text));
@@ -88,7 +101,14 @@ export async function runDecisionAI(ctx: AgentContext) {
   });
 }
 
-function createSubAgent(parentCtx: AgentContext) {
+function createSubAgent(parentCtx: AgentContext, isStoryCreator: boolean = false) {
+  if (isStoryCreator) {
+    return createStoryCreatorSubAgent(parentCtx);
+  }
+  return createScriptSubAgent(parentCtx);
+}
+
+function createScriptSubAgent(parentCtx: AgentContext) {
   const { resTool, abortSignal } = parentCtx;
   const memory = new Memory("scriptAgent", parentCtx.isolationKey);
 
@@ -231,6 +251,136 @@ function createSubAgent(parentCtx: AgentContext) {
     run_sub_agent_script,
     run_supervision_agent,
   };
+}
+
+function createStoryCreatorSubAgent(parentCtx: AgentContext) {
+  const { resTool, abortSignal } = parentCtx;
+  const memory = new Memory("scriptAgent", parentCtx.isolationKey);
+
+  async function runAgent({
+    key,
+    prompt,
+    system,
+    name,
+    memoryKey,
+    tools: extraTools,
+    messages,
+  }: {
+    key: `${string}:${string}`;
+    prompt: string;
+    system: string;
+    name: string;
+    memoryKey: string;
+    tools?: Record<string, any>;
+    messages?: { role: "user" | "assistant" | "system"; content: string }[];
+  }) {
+    parentCtx.msg.complete();
+    const subMsg = resTool.newMessage("assistant", name);
+
+    const { fullStream } = await u.Ai.Text(key, parentCtx.thinkConfig.think, parentCtx.thinkConfig.thinlLevel).stream({
+      system,
+      messages: messages ?? [{ role: "user", content: prompt }],
+      abortSignal,
+      tools: { ...extraTools, ...useTools({ resTool, msg: subMsg }) },
+    });
+
+    const fullResponse = await consumeFullStream(fullStream, subMsg);
+
+    if (fullResponse.trim()) {
+      await memory.add(memoryKey, removeAllXmlTags(fullResponse), {
+        name,
+        createTime: new Date(subMsg.datetime).getTime(),
+      });
+    }
+
+    parentCtx.msg = resTool.newMessage("assistant", "视频策划");
+    return fullResponse;
+  }
+
+  const promptInput = z
+    .object({
+      prompt: z.string().describe("交给子Agent的任务简约描述，100字以内"),
+    })
+    .toJSONSchema();
+
+  const run_sub_agent_l0l2 = tool({
+    description: "运行执行subAgent完成L0-L2框架（立意+世界+人物内核+季路）",
+    inputSchema: jsonSchema<{ prompt: string }>(promptInput),
+    execute: async ({ prompt }) => {
+      const skill = path.join(u.getPath("skills"), "story_creator_l0l2.md");
+      const systemPrompt = await fs.promises.readFile(skill, "utf-8");
+
+      const formatPrompt = "\n你必须使用如下XML格式写入工作区：\n<storySkeleton>L0-L2框架内容</storySkeleton>";
+
+      return runAgent({
+        key: "storyCreator:l0l2Agent",
+        prompt,
+        system: systemPrompt + formatPrompt,
+        name: "架构师",
+        memoryKey: "assistant:execution:l0l2",
+        messages: [{ role: "user", content: prompt + formatPrompt }],
+      });
+    },
+  });
+
+  const run_sub_agent_l3 = tool({
+    description: "运行执行subAgent完成L3分章beats大纲",
+    inputSchema: jsonSchema<{ prompt: string }>(promptInput),
+    execute: async ({ prompt }) => {
+      const skill = path.join(u.getPath("skills"), "story_creator_l3.md");
+      const systemPrompt = await fs.promises.readFile(skill, "utf-8");
+
+      const formatPrompt = "\n你必须使用如下XML格式写入工作区：\n<adaptationStrategy>L3分章beats内容</adaptationStrategy>";
+
+      return runAgent({
+        key: "storyCreator:l3Agent",
+        prompt,
+        system: systemPrompt + formatPrompt,
+        name: "架构师",
+        memoryKey: "assistant:execution:l3",
+        messages: [{ role: "user", content: prompt + formatPrompt }],
+      });
+    },
+  });
+
+  const run_sub_agent_draft = tool({
+    description: "运行执行subAgent完成单章正文（逐章写，prompt指定章节）",
+    inputSchema: jsonSchema<{ prompt: string }>(promptInput),
+    execute: async ({ prompt }) => {
+      const skill = path.join(u.getPath("skills"), "story_creator_draft.md");
+      const systemPrompt = await fs.promises.readFile(skill, "utf-8");
+
+      const formatPrompt = '\n你必须使用如下XML格式写入工作区：\n<scriptItem name="第N章：标题">单章正文内容</scriptItem>\n注意：attrs.name必须包含章节编号和标题。修订时使用相同的attrs.name覆盖，不新建条目。';
+
+      return runAgent({
+        key: "storyCreator:draftAgent",
+        prompt,
+        system: systemPrompt + formatPrompt,
+        name: "编剧",
+        memoryKey: "assistant:execution:draft",
+        messages: [{ role: "user", content: prompt + formatPrompt }],
+      });
+    },
+  });
+
+  const run_story_creator_supervision = tool({
+    description: "运行审计subAgent（架构/结构/风格/全季一致性，prompt指定审计类型）",
+    inputSchema: jsonSchema<{ prompt: string }>(promptInput),
+    execute: async ({ prompt }) => {
+      const skill = path.join(u.getPath("skills"), "story_creator_supervision.md");
+      const systemPrompt = await fs.promises.readFile(skill, "utf-8");
+
+      return runAgent({
+        key: "storyCreator:supervisionAgent",
+        prompt,
+        system: systemPrompt,
+        name: "审查",
+        memoryKey: "assistant:supervision",
+      });
+    },
+  });
+
+  return { run_sub_agent_l0l2, run_sub_agent_l3, run_sub_agent_draft, run_story_creator_supervision };
 }
 
 async function consumeFullStream(
