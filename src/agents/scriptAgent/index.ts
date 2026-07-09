@@ -348,7 +348,24 @@ function createStoryCreatorSubAgent(parentCtx: AgentContext) {
     inputSchema: jsonSchema<{ prompt: string }>(promptInput),
     execute: async ({ prompt }) => {
       const skill = path.join(u.getPath("skills"), "story_creator_draft.md");
-      const systemPrompt = await fs.promises.readFile(skill, "utf-8");
+      let systemPrompt = await fs.promises.readFile(skill, "utf-8");
+
+      // 根据项目的写手人设动态加载对应 SKILL 文件
+      const projectData = await u.db("o_project").where("id", resTool.data.projectId).first();
+      const authorPersona = projectData?.authorPersona;
+      if (authorPersona) {
+        const personaSkillPath = path.join(u.getPath("skills"), `SKILL-${authorPersona}.md`);
+        try {
+          const personaSkill = await fs.promises.readFile(personaSkillPath, "utf-8");
+          // 替换 draft.md 中的动态注入占位
+          systemPrompt = systemPrompt.replace(
+            "<!-- AUTHOR_PERSONA_SKILL_RULES: 此处由运行时动态追加写手 SKILL 内容 -->",
+            personaSkill,
+          );
+        } catch {
+          // SKILL 文件不存在时保持占位，不中断流程
+        }
+      }
 
       const formatPrompt = '\n你必须使用如下XML格式写入工作区：\n<scriptItem name="第N章：标题">单章正文内容</scriptItem>\n注意：attrs.name必须包含章节编号和标题。修订时使用相同的attrs.name覆盖，不新建条目。';
 
