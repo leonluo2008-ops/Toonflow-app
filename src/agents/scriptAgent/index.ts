@@ -367,6 +367,21 @@ function createStoryCreatorSubAgent(parentCtx: AgentContext) {
         }
       }
 
+      // 根据项目的目标读者动态加载对应 AUDIENCE SKILL
+      const targetAudience = projectData?.targetAudience;
+      if (targetAudience) {
+        const audienceSkillPath = path.join(u.getPath("skills"), `AUDIENCE-${targetAudience}.md`);
+        try {
+          const audienceSkill = await fs.promises.readFile(audienceSkillPath, "utf-8");
+          systemPrompt = systemPrompt.replace(
+            "<!-- TARGET_AUDIENCE_SKILL_RULES: 此处由运行时动态追加目标读者 SKILL 内容 -->",
+            audienceSkill,
+          );
+        } catch {
+          // SKILL 文件不存在时保持占位，不中断流程
+        }
+      }
+
       const formatPrompt = '\n你必须使用如下XML格式写入工作区：\n<scriptItem name="第N章：标题">单章正文内容</scriptItem>\n注意：attrs.name必须包含章节编号和标题。修订时使用相同的attrs.name覆盖，不新建条目。';
 
       return runAgent({
