@@ -13,16 +13,18 @@ export default router.post(
     name: z.string(),
     intro: z.string(),
     type: z.string(),
-    artStyle: z.string(),
-    directorManual: z.string(),
-    videoRatio: z.string(),
-    imageModel: z.string(),
-    videoModel: z.string(),
-    imageQuality: z.string(),
-    mode: z.string(),
+    artStyle: z.string().optional(),
+    directorManual: z.string().optional(),
+    videoRatio: z.string().optional(),
+    imageModel: z.string().optional(),
+    videoModel: z.string().optional(),
+    imageQuality: z.string().optional(),
+    mode: z.string().optional(),
+    authorPersona: z.string().optional(),
+    targetAudience: z.string().optional(),
   }),
   async (req, res) => {
-    const { projectType, name, intro, type, directorManual, artStyle, videoRatio, imageModel, videoModel, imageQuality, mode } = req.body;
+    const { projectType, name, intro, type, directorManual, artStyle, videoRatio, imageModel, videoModel, imageQuality, mode, authorPersona, targetAudience } = req.body;
 
     await u.db("o_project").insert({
       id: Date.now(),
@@ -30,15 +32,17 @@ export default router.post(
       name,
       intro,
       type,
-      artStyle,
-      videoRatio,
-      directorManual,
+      artStyle: artStyle || "",
+      videoRatio: videoRatio || "16:9",
+      directorManual: directorManual || "",
       userId: 1,
-      imageModel,
-      videoModel,
+      imageModel: imageModel || "",
+      videoModel: videoModel || "",
       createTime: Date.now(),
-      imageQuality,
-      mode,
+      imageQuality: imageQuality || "",
+      mode: mode || "",
+      authorPersona: authorPersona || "",
+      targetAudience: targetAudience || "",
     });
 
     res.status(200).send(success({ message: "新增项目成功" }));

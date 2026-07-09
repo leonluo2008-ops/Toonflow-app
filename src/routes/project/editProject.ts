@@ -13,17 +13,19 @@ export default router.post(
     name: z.string(),
     intro: z.string(),
     type: z.string(),
-    artStyle: z.string(),
-    directorManual: z.string(),
-    videoRatio: z.string(),
-    imageModel: z.string(),
-    videoModel: z.string(),
+    artStyle: z.string().optional(),
+    directorManual: z.string().optional(),
+    videoRatio: z.string().optional(),
+    imageModel: z.string().optional(),
+    videoModel: z.string().optional(),
     projectType: z.string(),
-    imageQuality: z.string(),
-    mode: z.string(),
+    imageQuality: z.string().optional(),
+    mode: z.string().optional(),
+    authorPersona: z.string().optional(),
+    targetAudience: z.string().optional(),
   }),
   async (req, res) => {
-    const { id, name, intro, type, artStyle, videoRatio, directorManual, imageModel, videoModel, imageQuality, projectType, mode } = req.body;
+    const { id, name, intro, type, artStyle, videoRatio, directorManual, imageModel, videoModel, imageQuality, projectType, mode, authorPersona, targetAudience } = req.body;
 
     await u.db("o_project").where("id", id).update({
       name,
@@ -37,6 +39,8 @@ export default router.post(
       imageQuality,
       projectType,
       mode,
+      authorPersona: authorPersona || "",
+      targetAudience: targetAudience || "",
     });
 
     res.status(200).send(success({ message: "编辑项目成功" }));
