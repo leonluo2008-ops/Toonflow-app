@@ -20,6 +20,7 @@ export interface AgentContext {
     think: boolean;
     thinlLevel: 0 | 1 | 2 | 3;
   };
+  projectId?: string;
 }
 
 function buildMemPrompt(mem: Awaited<ReturnType<Memory["get"]>>): string {

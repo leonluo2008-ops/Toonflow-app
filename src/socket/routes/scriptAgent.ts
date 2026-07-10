@@ -61,10 +61,19 @@ export default (nsp: Namespace) => {
         resTool,
         msg,
         thinkConfig,
+        projectId: socket.handshake.auth.projectId as string,
       };
 
       try {
         await agent.runDecisionAI(ctx);
+        // 阶段变更通知前端
+        const projectId = socket.handshake.auth.projectId as string;
+        if (projectId) {
+          const project = await u.db("o_project").where("id", projectId).select("stage").first();
+          if (project?.stage) {
+            socket.emit("stageUpdate", { stage: project.stage });
+          }
+        }
       } catch (err: any) {
         if (err.name !== "AbortError" && !currentController.signal.aborted) {
           console.error("[scriptAgent] chat error:", u.error(err).message);
