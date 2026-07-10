@@ -9,7 +9,7 @@ const router = express.Router();
 export default router.post(
   "/",
   validateFields({
-    projectId: z.number(),
+    projectId: z.coerce.number(),
   }),
   async (req, res) => {
     const { projectId } = req.body;

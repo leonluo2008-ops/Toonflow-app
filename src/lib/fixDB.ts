@@ -72,6 +72,17 @@ export default async (knex: Knex): Promise<void> => {
   await addColumn("o_project", "stage", "string");
   await addColumn("o_project", "decisionLog", "text");
   await addColumn("o_novel", "auditStatus", "string");
+  // scriptAgent 主入口兜底：若未配 vendor/model，从子 agent 继承
+  const mainAgent = await u.db("o_agentDeploy").where("key", "scriptAgent").first();
+  if (mainAgent && !mainAgent.vendorId) {
+    const child = await u.db("o_agentDeploy").where("key", "like", "scriptAgent:%").whereNotNull("vendorId").first();
+    if (child) {
+      await u.db("o_agentDeploy").where("id", mainAgent.id).update({
+        vendorId: child.vendorId,
+        modelName: child.modelName,
+      });
+    }
+  }
   const vendorDataSelect = await u.db("o_vendorConfig").whereIn("id", ["deepseek", "atlascloud"]).select("*");
   if (!vendorDataSelect.find((i) => i.id == "deepseek")) {
     await u.db("o_vendorConfig").insert({
