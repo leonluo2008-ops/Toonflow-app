@@ -461,21 +461,44 @@ function createStoryCreatorSubAgent(parentCtx: AgentContext) {
     })
     .toJSONSchema();
 
+  // 阶段前置条件（硬门禁：不允许跳步或回退）
+  const STAGE_ORDER = [
+    "构思中", "立意共创中", "框架共创中",
+    "L1 已定", "L0 已定", "全系列 L2 已定", "当前季 L3 已定",
+    "架构审计中", "正文创作中", "单章审计中", "单章修订中",
+    "当前季已完稿", "全季一致性审计中", "全季总修中", "完成",
+  ];
+
   const lock_project_stage = tool({
-    description: "锁定剧本创作项目当前阶段（写入DB o_project.stage）",
+    description: "锁定剧本创作项目当前阶段（写入DB o_project.stage）。只能按顺序前进，不可跳步或回退。",
     inputSchema: jsonSchema<{ stage: string; summary: string }>(lockProjectStageInput),
     execute: async ({ stage, summary }) => {
       const projectId = resTool.data.projectId;
+      const current = await u.db("o_project").where("id", projectId).select("stage").first();
+      const currentStage = (current?.stage as string) || "构思中";
+      const currentIndex = STAGE_ORDER.indexOf(currentStage);
+      const targetIndex = STAGE_ORDER.indexOf(stage);
+
+      if (targetIndex < 0) {
+        return `❌ 门禁拒绝：阶段「${stage}」不在合法枚举中。合法值：${STAGE_ORDER.join("、")}`;
+      }
+      if (targetIndex < currentIndex) {
+        return `❌ 门禁拒绝：不能从「${currentStage}」回退到「${stage}」（当前索引${currentIndex} > 目标索引${targetIndex}）。如需回退请使用项目管理手动操作。`;
+      }
+      if (targetIndex > currentIndex + 1) {
+        return `❌ 门禁拒绝：不能从「${currentStage}」跳步到「${stage}」（中间跨越了${targetIndex - currentIndex - 1}个阶段）。请逐步推进。`;
+      }
+
       await u.db("o_project").where("id", projectId).update({ stage });
 
       const project = await u.db("o_project").where("id", projectId).first();
       const existingLog = (project?.decisionLog as string) || "";
       const timestamp = new Date().toISOString();
-      const entry = `[${timestamp}] stage=${stage} | ${summary}`;
+      const entry = `[${timestamp}] ${currentStage} → ${stage} | ${summary}`;
       const newLog = existingLog ? existingLog + "\n" + entry : entry;
       await u.db("o_project").where("id", projectId).update({ decisionLog: newLog });
 
-      return `项目阶段已锁定为「${stage}」，决策日志已更新。`;
+      return `✅ 项目阶段已从「${currentStage}」推进到「${stage}」，决策日志已更新。`;
     },
   });
 

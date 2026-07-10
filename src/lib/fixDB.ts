@@ -71,6 +71,7 @@ export default async (knex: Knex): Promise<void> => {
   // 剧本创作项目阶段与决策日志
   await addColumn("o_project", "stage", "string");
   await addColumn("o_project", "decisionLog", "text");
+  await addColumn("o_novel", "auditStatus", "string");
   const vendorDataSelect = await u.db("o_vendorConfig").whereIn("id", ["deepseek", "atlascloud"]).select("*");
   if (!vendorDataSelect.find((i) => i.id == "deepseek")) {
     await u.db("o_vendorConfig").insert({
