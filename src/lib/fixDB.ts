@@ -108,13 +108,18 @@ export default async (knex: Knex): Promise<void> => {
       value: notValModelData.length ? "0" : "1",
     });
   }
+  //同步更新主入口 agent 的 name/desc 标注（不覆盖已配置的模型）
+  await db("o_agentDeploy").where("key", "scriptAgent").update({
+    name: "剧本Agent（短剧/剧本创作共用）",
+    desc: "短剧创作与剧本创作的决策调度入口，建议使用具备强大文本理解和生成能力的模型",
+  });
   //添加数据高级配置
   const advancedAgentList = [
-    { key: "scriptAgent:decisionAgent", name: "剧本Agent:决策层", desc: "决策层" },
-    { key: "scriptAgent:supervisionAgent", name: "剧本Agent:监督层", desc: "监督层" },
-    { key: "scriptAgent:storySkeletonAgent", name: "剧本Agent:故事骨架", desc: "故事骨架生成" },
-    { key: "scriptAgent:adaptationStrategyAgent", name: "剧本Agent:改编策略", desc: "改编策略生成" },
-    { key: "scriptAgent:scriptAgent", name: "剧本Agent:剧本生成", desc: "剧本生成" },
+    { key: "scriptAgent:decisionAgent", name: "剧本Agent:决策层（短剧/剧本创作共用）", desc: "短剧创作加载 script_agent_decision.md，剧本创作加载 story_creator_decision.md" },
+    { key: "scriptAgent:supervisionAgent", name: "剧本Agent:监督层（短剧/剧本创作共用）", desc: "短剧创作加载 script_agent_supervision.md，剧本创作加载 story_creator_supervision.md" },
+    { key: "scriptAgent:storySkeletonAgent", name: "剧本Agent:故事骨架（短剧/剧本创作共用）", desc: "短剧创作加载 script_execution_skeleton.md，剧本创作加载 story_creator_l0l2.md（L0-L2架构）" },
+    { key: "scriptAgent:adaptationStrategyAgent", name: "剧本Agent:改编策略（短剧/剧本创作共用）", desc: "短剧创作加载 script_execution_adaptation.md，剧本创作加载 story_creator_l3.md（分章大纲）" },
+    { key: "scriptAgent:scriptAgent", name: "剧本Agent:剧本生成（短剧/剧本创作共用）", desc: "短剧创作加载 script_execution_script.md，剧本创作加载 story_creator_draft.md（逐章写作）" },
     { key: "productionAgent:decisionAgent", name: "生产Agent:决策层", desc: "决策层" },
     { key: "productionAgent:supervisionAgent", name: "生产Agent:监督层", desc: "监督层" },
     { key: "productionAgent:deriveAssetsAgent", name: "生产Agent:衍生资产", desc: "衍生资产" },
@@ -138,6 +143,9 @@ export default async (knex: Knex): Promise<void> => {
         maxOutputTokens: 0,
         disabled: false,
       });
+    } else {
+      // 同步更新 name/desc 标注（不覆盖已配置的模型）
+      await db("o_agentDeploy").where("key", agent.key).update({ name: agent.name, desc: agent.desc });
     }
   }
   //矫正提示词
