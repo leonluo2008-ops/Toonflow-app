@@ -412,7 +412,73 @@ function createStoryCreatorSubAgent(parentCtx: AgentContext) {
     },
   });
 
-  return { run_sub_agent_l0l2, run_sub_agent_l3, run_sub_agent_draft, run_story_creator_supervision };
+  const auditPromptInput = z
+    .object({
+      auditType: z.enum(["structure", "style"]).describe("审计类型：structure=结构审计，style=风格审计"),
+      prompt: z.string().describe("审计任务描述，100字以内"),
+    })
+    .toJSONSchema();
+
+  const run_story_creator_structure_audit = tool({
+    description: "运行独立结构审计subAgent（仅结构审计，不可兼任风格审计）",
+    inputSchema: jsonSchema<{ auditType: string; prompt: string }>(auditPromptInput),
+    execute: async ({ auditType, prompt }) => {
+      const skill = path.join(u.getPath("skills"), "story_creator_supervision.md");
+      const systemPrompt = await fs.promises.readFile(skill, "utf-8");
+
+      return runAgent({
+        key: "scriptAgent:supervisionAgent",
+        prompt: `【结构审计】${prompt}`,
+        system: systemPrompt,
+        name: "结构审计",
+        memoryKey: "assistant:audit:structure",
+      });
+    },
+  });
+
+  const run_story_creator_style_audit = tool({
+    description: "运行独立风格审计subAgent（仅风格审计，不可兼任结构审计）",
+    inputSchema: jsonSchema<{ auditType: string; prompt: string }>(auditPromptInput),
+    execute: async ({ auditType, prompt }) => {
+      const skill = path.join(u.getPath("skills"), "story_creator_supervision.md");
+      const systemPrompt = await fs.promises.readFile(skill, "utf-8");
+
+      return runAgent({
+        key: "scriptAgent:supervisionAgent",
+        prompt: `【风格审计】${prompt}`,
+        system: systemPrompt,
+        name: "风格审计",
+        memoryKey: "assistant:audit:style",
+      });
+    },
+  });
+
+  const lockProjectStageInput = z
+    .object({
+      stage: z.string().describe("项目阶段枚举值，如：构思中/L1已定/L0已定/全系列L2已定/当前季L3已定/架构审计中/正文创作中/单章审计中/当前季已完稿/暂停"),
+      summary: z.string().describe("本次阶段变更摘要，50字以内"),
+    })
+    .toJSONSchema();
+
+  const lock_project_stage = tool({
+    description: "锁定剧本创作项目当前阶段（写入DB o_project.stage）",
+    inputSchema: jsonSchema<{ stage: string; summary: string }>(lockProjectStageInput),
+    execute: async ({ stage, summary }) => {
+      const projectId = resTool.data.projectId;
+      await u.db("o_project").where("id", projectId).update({ stage });
+
+      const project = await u.db("o_project").where("id", projectId).first();
+      const existingLog = (project?.decisionLog as string) || "";
+      const timestamp = new Date().toISOString();
+      const entry = `[${timestamp}] stage=${stage} | ${summary}`;
+      const newLog = existingLog ? existingLog + "\n" + entry : entry;
+      await u.db("o_project").where("id", projectId).update({ decisionLog: newLog });
+
+      return `项目阶段已锁定为「${stage}」，决策日志已更新。`;
+    },
+  });
+
+  return { run_sub_agent_l0l2, run_sub_agent_l3, run_sub_agent_draft, run_story_creator_supervision, run_story_creator_structure_audit, run_story_creator_style_audit, lock_project_stage };
 }
 
 async function consumeFullStream(
