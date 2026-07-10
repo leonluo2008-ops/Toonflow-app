@@ -88,14 +88,16 @@
 | **Gate 门禁** | 展示锁定内容 + 等主创显式确认 | **收到确认前不前进** |
 
 ```
-1.1 共创 L1 定魂（四拍）→ 锁定
-1.2 共创 L0 定世界（四拍，须服务 L1）→ 锁定
-1.3 共创 全系列 L2 定路（四拍，须有跨季递进）→ 锁定
-1.4 共创 当季 L2 拆章（四拍，7-10 章）→ 锁定
-1.5 调用 run_sub_agent_l0l2 → 汇聚 L0-L2 框架 → <storySkeleton>
-1.6 调用 run_sub_agent_l3 → 拆 L3 beats（全章，不只第1章）→ <adaptationStrategy>
-1.7 调用 run_story_creator_supervision(prompt="架构审计") → 架构审计报告
-1.8 门禁：展示报告，等用户确认框架锁定，进入正文创作
+1.1 调用 lock_project_stage(stage="立意共创中", summary="开始L1定魂") → 开始共创
+1.2 共创 L1 定魂（四拍）→ 用户确认 → 调用 lock_project_stage(stage="L1 已定", summary="L1定魂锁定")
+1.3 共创 L0 定世界（四拍，须服务 L1）→ 用户确认 → 调用 lock_project_stage(stage="L0 已定", summary="L0定世界锁定")
+1.4 共创 全系列 L2 定路（四拍，须有跨季递进）→ 用户确认 → 调用 lock_project_stage(stage="全系列 L2 已定", summary="全系列L2锁定")
+1.5 共创 当季 L2 拆章（四拍，7-10 章）→ 用户确认 → 调用 lock_project_stage(stage="当前季 L3 已定", summary="当季L2拆章锁定")
+1.6 调用 run_sub_agent_l0l2 → 汇聚 L0-L2 框架 → <storySkeleton>
+1.7 调用 run_sub_agent_l3 → 拆 L3 beats（全章，不只第1章）→ <adaptationStrategy>
+1.8 调用 lock_project_stage(stage="架构审计中", summary="L3完成，进入架构审计")
+1.9 调用 run_story_creator_supervision(prompt="架构审计") → 架构审计报告
+1.10 门禁：展示报告，等用户确认 → 调用 lock_project_stage(stage="正文创作中", summary="架构审计通过，进入正文创作")
 ```
 
 **注意**：步骤 1.1-1.4 是决策层与用户对话的启发式共创过程；步骤 1.5-1.7 是通过子 agent 派发执行。共创产出通过对话沉淀，最终由子 agent 落地为结构化工作区数据。
@@ -106,12 +108,14 @@
 
 ```
 for each 章节:
-  2.1 调用 run_sub_agent_draft(prompt="写第N章") → 单章正文 → <scriptItem name="第N章：标题">
-  2.2 调用 run_story_creator_supervision(prompt="结构审计 第N章") → 结构审计报告
-  2.3 调用 run_story_creator_supervision(prompt="风格审计 第N章") → 风格审计报告
-  2.4 若有 P0-硬伤或 P0-风格：
+  2.1 调用 lock_project_stage(stage="单章审计中", summary="第N章正文完成")
+  2.2 调用 run_sub_agent_draft(prompt="写第N章") → 单章正文 → <scriptItem name="第N章：标题">
+  2.3 调用 run_story_creator_supervision(prompt="结构审计 第N章") → 结构审计报告
+  2.4 调用 run_story_creator_supervision(prompt="风格审计 第N章") → 风格审计报告
+  2.5 若有 P0-硬伤或 P0-风格：
+      调用 lock_project_stage(stage="单章修订中", summary="第N章有P0，进入修订")
       调用 run_sub_agent_draft(prompt="修订第N章，修复以下P0...") → 修订稿 → 重审（结构+风格分别重审）
-  2.5 P0 清零 → 展示报告等用户确认 → 下一章
+  2.6 P0 清零 → 调用 lock_project_stage(stage="当前季已完稿", summary="第N章审计通过") → 展示报告等用户确认 → 下一章
 ```
 
 **逐章写作约束**：
@@ -129,9 +133,10 @@ for each 章节:
 
 ```
 3.1 确认全季完稿（所有章节均通过双审计）
-3.2 调用 run_story_creator_supervision(prompt="全季一致性审计") → 全季审计报告
-3.3 若有 P0：逐章修订 → 重审
-3.4 P0 清零 → 全季剧本定稿
+3.2 调用 lock_project_stage(stage="全季一致性审计中", summary="全季完稿，进入总审计")
+3.3 调用 run_story_creator_supervision(prompt="全季一致性审计") → 全季审计报告
+3.4 若有 P0：调用 lock_project_stage(stage="全季总修中", summary="全季审计有P0") → 逐章修订 → 重审
+3.5 P0 清零 → 调用 lock_project_stage(stage="完成", summary="全季剧本定稿")
 ```
 
 ## 调度与派发规范
@@ -196,6 +201,7 @@ for each 章节:
 
 ## 禁止动作
 
+- **不得只用文字描述阶段推进，必须调用 lock_project_stage tool 写入 DB**——文字说"进入L1已定"但不调 tool = 未执行
 - 不得在正文启动前跳过全系列 L2
 - 不得在框架阶段一次性自动产出整套 L0-L3 让主创只做审批
 - 不得只拆第1章就开始连载
